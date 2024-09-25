@@ -1,21 +1,21 @@
 import requests
 from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
-from time import sleep
 from dotenv import load_dotenv
 import os
-import csv  # Import CSV module
+import csv 
 
 load_dotenv()
 
 # Access API key
 api_key = os.getenv('api_key')
+# mimic browser request
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36'
 
 }
-# Function to build Skyscanner URL based on city codes and dates
-def build_skyscanner_url(destination_city_code, departure_date, return_date):
+# Function to build kayak URL based on city codes and dates
+def build_kayak_url(destination_city_code, departure_date, return_date):
     base_url = "https://www.kayak.com/flights/NYC-"
     url = f"{base_url}{destination_city_code}/{departure_date}/{return_date}?sort=bestflight_a"
     return url
@@ -25,6 +25,7 @@ def scrape_flight_prices(url):
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.content, 'html.parser')
     prices = []
+    # look for prices
     price_tags = soup.find_all('div', class_='f8F1-price-text')
     for tag in price_tags:
         price = tag.text.strip()
@@ -79,11 +80,11 @@ def plot_prices_and_weather(prices, weather_data):
 # Function to save data to CSV
 def save_to_csv(prices, weather_data, destination_city, departure_date):
     filename = f"{destination_city}-{departure_date}.csv"
-    with open(filename, mode='w', newline='') as file:
+    with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['Price', 'City', 'Temperature (K)', 'Weather Condition'])
+        writer.writerow(['Price', 'City', 'Temperature (C)', 'Weather Condition'])
         for price in prices:
-            writer.writerow([price, weather_data['City'], weather_data['Temperature (K)'], weather_data['Weather Condition']])
+            writer.writerow([price, weather_data['City'], round(float(weather_data['Temperature (K)']) - 273.15, 2), weather_data['Weather Condition']])
     print(f"Data saved to {filename}")
 
 # Main execution block
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     return_date = input("Enter the return date (YYYY-MM-DD): ")
 
     # Build and fetch data
-    flight_url = build_skyscanner_url(destination_airport_code, departure_date, return_date)
+    flight_url = build_kayak_url(destination_airport_code, departure_date, return_date)
     flight_prices = scrape_flight_prices(flight_url)
     weather_data_raw = get_weather_data(destination_city, api_key)
     cleaned_weather = clean_weather_data(weather_data_raw)
