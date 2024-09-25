@@ -2,31 +2,37 @@ import requests
 from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 from time import sleep
+from dotenv import load_dotenv
+import os
+import csv  # Import CSV module
 
+load_dotenv()
+
+# Access API key
+api_key = os.getenv('api_key')
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36'
+
+}
 # Function to build Skyscanner URL based on city codes and dates
-def build_skyscanner_url(departure_city_code, destination_city_code, departure_date, return_date):
-    base_url = "https://www.skyscanner.com/transport/flights/nyc"
-    url = f"{base_url}/{destination_city_code}/{departure_date}/{return_date}/?adultsv2=1&cabinclass=economy&childrenv2=&ref=home&rtn=1&preferdirects=false&outboundaltsenabled=false&inboundaltsenabled=false"
+def build_skyscanner_url(destination_city_code, departure_date, return_date):
+    base_url = "https://www.kayak.com/flights/NYC-"
+    url = f"{base_url}{destination_city_code}/{departure_date}/{return_date}?sort=bestflight_a"
     return url
 
 # Function to scrape flight prices from Skyscanner
 def scrape_flight_prices(url):
-    response = requests.get(url)
-    sleep(5)
+    response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.content, 'html.parser')
     prices = []
-
-    # Attempt to find all span tags and filter by those containing dollar signs
-    print(soup)
-    span_tags = soup.find_all('span')
-    for tag in span_tags:
-        if '$' in tag.text:
-            prices.append(tag.text.strip())
-
+    price_tags = soup.find_all('div', class_='f8F1-price-text')
+    for tag in price_tags:
+        price = tag.text.strip()
+        if price.startswith('$'):
+            prices.append(price)
     if not prices:
         print("No prices found.")
     return prices
-
 
 # Function to get weather data using OpenWeather API
 def get_weather_data(city, api_key):
@@ -56,45 +62,43 @@ def plot_prices_and_weather(prices, weather_data):
         avg_prices = [float(price.replace('$', '').replace(',', '')) for price in prices]
         temp = float(weather_data.get('Temperature (K)', 273.15)) - 273.15  # Convert Kelvin to Celsius
         weather_condition = weather_data.get('Weather Condition', 'N/A')
-    except ValueError:  # Handle non-numeric or missing values
+    except ValueError:
         print("Error processing numerical data.")
         return
-    
     fig, ax1 = plt.subplots()
-
-    ax1.set_xlabel('Flight Number')
+    ax1.set_xlabel('Number Of Flights')
     ax1.set_ylabel('Price (USD)', color='tab:red')
-    ax1.plot(range(len(avg_prices)), avg_prices, color='tab:red', label='Flight Prices')
-    ax1.tick_params(axis='y', labelcolor='tab:red')
-
+    ax1.scatter(range(len(avg_prices)), avg_prices, color='tab:red', label='Flight Prices')
     ax2 = ax1.twinx()  
     ax2.set_ylabel('Temperature (°C)', color='tab:blue')  
     ax2.axhline(temp, color='tab:blue', linestyle='--', label=f"Temperature ({weather_condition})")
-    ax2.tick_params(axis='y', labelcolor='tab:blue')
-
     plt.title(f"Flight Prices vs. Weather in {weather_data['City']}")
     fig.tight_layout()  
     plt.show()
 
-# Example usage:
-destination_city = input("Enter the destination city name for weather data: ").strip()
-destination_airport_code = input("Enter the destination airport code: ").strip()
-departure_date = input("Enter the departure date (YYMMDD): ")
-return_date = input("Enter the return date (YYMMDD): ")
-api_key = "b5fc77ee220b9988d70ea10665c8ab22"  # Replace with your OpenWeather API key
+# Function to save data to CSV
+def save_to_csv(prices, weather_data, destination_city, departure_date):
+    filename = f"{destination_city}-{departure_date}.csv"
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Price', 'City', 'Temperature (K)', 'Weather Condition'])
+        for price in prices:
+            writer.writerow([price, weather_data['City'], weather_data['Temperature (K)'], weather_data['Weather Condition']])
+    print(f"Data saved to {filename}")
 
-# Build Skyscanner URL
-flight_url = build_skyscanner_url("nyc", destination_airport_code, departure_date, return_date)
-print(f"Generated Skyscanner URL: {flight_url}")
+# Main execution block
+if __name__ == "__main__":
+    destination_city = input("Enter the destination city name for weather data: ").strip()
+    destination_airport_code = input("Enter the destination airport code: ").strip()
+    departure_date = input("Enter the departure date (YYYY-MM-DD): ")
+    return_date = input("Enter the return date (YYYY-MM-DD): ")
 
-# Scrape flight prices
-flight_prices = scrape_flight_prices(flight_url)
-print(f"Flight prices: {flight_prices}")
+    # Build and fetch data
+    flight_url = build_skyscanner_url(destination_airport_code, departure_date, return_date)
+    flight_prices = scrape_flight_prices(flight_url)
+    weather_data_raw = get_weather_data(destination_city, api_key)
+    cleaned_weather = clean_weather_data(weather_data_raw)
 
-# Get weather data for destination
-weather_data_raw = get_weather_data(destination_city, api_key)
-cleaned_weather = clean_weather_data(weather_data_raw)
-print(f"Weather data: {cleaned_weather}")
-
-# Plot the flight prices and weather data
-plot_prices_and_weather(flight_prices, cleaned_weather)
+    # Plot and save data
+    plot_prices_and_weather(flight_prices, cleaned_weather)
+    save_to_csv(flight_prices, cleaned_weather, destination_city, departure_date)
